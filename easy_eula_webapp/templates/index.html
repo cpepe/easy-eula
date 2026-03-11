@@ -184,6 +184,13 @@
             color: #fbbf24;
             border-bottom-color: rgba(251, 191, 36, 0.3);
         }
+
+        [contenteditable][aria-placeholder]:empty:before {
+            content: attr(aria-placeholder);
+            color: #94a3b8;
+            pointer-events: none;
+            display: block;
+        }
     </style>
 </head>
 
@@ -219,16 +226,17 @@
             <div style="text-align: center; color: var(--border-color); font-weight: 600; margin: 1.5rem 0;">— OR —
             </div>
 
-            <form action="/" method="POST" onsubmit="showLoading()" style="flex-direction: column;">
+            <form action="/" method="POST" onsubmit="prepareEmailSubmission(event)" style="flex-direction: column;">
                 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 0.5rem;">
                     <label style="font-weight: 600;">Analyze via Update Email</label>
-                    <textarea name="email_text" rows="4" placeholder="Paste the policy update email text here..."
-                        style="width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--bg-color); color: var(--text-color); font-size: 1rem; font-family: inherit; resize: vertical; transition: border-color 0.2s; outline: none;"
+                    <div id="email_editor" contenteditable="true" aria-placeholder="Paste the policy update email (with formatting) here..."
+                        style="min-height: 120px; width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--bg-color); color: var(--text-color); font-size: 1rem; font-family: inherit; overflow-y: auto; transition: border-color 0.2s; outline: none; cursor: text;"
                         onfocus="this.style.borderColor='var(--primary)'"
-                        onblur="this.style.borderColor='var(--border-color)'"></textarea>
+                        onblur="this.style.borderColor='var(--border-color)'"></div>
+                    <input type="hidden" name="email_text" id="hidden_email_text">
                 </div>
                 <div style="display: flex; justify-content: flex-end;">
-                    <button type="submit" class="submit-btn">Analyze Email</button>
+                    <button type="submit" class="submit-btn" id="email-submit-btn">Analyze Email</button>
                 </div>
             </form>
             <div id="loading" class="loading">
@@ -238,6 +246,17 @@
 
         {% if results %}
         <section class="results-container">
+            {% if urls and urls|length > 0 %}
+            <div class="result-card" style="padding: 1.5rem; background-color: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);">
+                <h3 style="margin-top: 0; color: #60a5fa; font-size: 1.1rem; margin-bottom: 0.75rem;">Analyzed Documents ({{ urls|length }})</h3>
+                <ul style="margin-bottom: 0; margin-top: 0;">
+                    {% for u in urls %}
+                    <li style="margin-bottom: 0.25rem;"><a href="{{ u }}" target="_blank" style="color: #94a3b8; text-decoration: none; word-break: break-all;">{{ u }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
             <div class="result-card">
                 <h2>Policy Summary</h2>
                 <div class="markdown-content">
@@ -270,6 +289,19 @@
                 btn.disabled = true;
                 btn.textContent = 'Processing...';
             });
+        }
+
+        function prepareEmailSubmission(event) {
+            const editor = document.getElementById('email_editor');
+            const hiddenInput = document.getElementById('hidden_email_text');
+            hiddenInput.value = editor.innerHTML;
+            
+            if (!editor.textContent.trim() && !editor.querySelector('a, img')) {
+                event.preventDefault();
+                alert("Please paste an email first.");
+                return;
+            }
+            showLoading();
         }
     </script>
 </body>

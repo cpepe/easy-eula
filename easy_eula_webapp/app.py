@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, flash
 import markdown
 from easy_eula_webapp.config import Config
-from easy_eula_webapp.orchestrator import analyze_eula, analyze_email
+from easy_eula_webapp.orchestrator import analyze_eulas, analyze_email
 import os
 
 app = Flask(__name__)
@@ -16,17 +16,23 @@ def index():
         email_text = request.form.get('email_text')
         
         if url:
-            analysis = analyze_eula(url)
+            urls = [url]
+            analysis = analyze_eulas(urls)
         elif email_text:
             analysis = analyze_email(email_text)
-            url = analysis.get('extracted_url')
+            urls = analysis.get('extracted_urls', [])
+            # If multiple URLs were extracted via email, clear the single URL box to prevent validation issues
+            if len(urls) > 1:
+                 url = ""
+            elif len(urls) == 1:
+                 url = urls[0]
         else:
             flash('Please enter a URL or paste an email.', 'error')
             return render_template('index.html')
             
         if not analysis.get('success'):
             flash(f"Error analyzing: {analysis.get('error')}", 'error')
-            return render_template('index.html', url=url)
+            return render_template('index.html', url=url, urls=urls)
             
         # Convert markdown results to HTML
         results = {
@@ -35,7 +41,7 @@ def index():
             'tinfoil': markdown.markdown(analysis['tinfoil'])
         }
         
-        return render_template('index.html', url=url, results=results)
+        return render_template('index.html', url=url, urls=urls, results=results)
         
     return render_template('index.html')
 

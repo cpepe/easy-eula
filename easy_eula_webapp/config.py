@@ -7,4 +7,4 @@ class Config:
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
     MODEL_PROVIDER = os.environ.get('MODEL_PROVIDER', 'ollama')
     OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
-    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'mistral')
+    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'ministral-3:8b')

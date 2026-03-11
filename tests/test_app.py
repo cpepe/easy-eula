@@ -15,7 +15,7 @@ def test_index_get(client):
     assert b'Easy EULA' in response.data
     assert b'Analyze Policy' in response.data
 
-@patch('easy_eula_webapp.app.analyze_eula')
+@patch('easy_eula_webapp.app.analyze_eulas')
 def test_index_post_success(mock_analyze, client):
     """Test successful POST request."""
     # Mock the response from the LLM orchestrator
@@ -32,9 +32,9 @@ def test_index_post_success(mock_analyze, client):
     assert b'Test Summary' in response.data
     assert b'Test Impact' in response.data
     assert b'Test Tinfoil' in response.data
-    mock_analyze.assert_called_once_with('https://example.com/terms')
+    mock_analyze.assert_called_once_with(['https://example.com/terms'])
 
-@patch('easy_eula_webapp.app.analyze_eula')
+@patch('easy_eula_webapp.app.analyze_eulas')
 def test_index_post_failure(mock_analyze, client):
     """Test failed POST request."""
     mock_analyze.return_value = {
@@ -56,7 +56,7 @@ def test_index_post_email_success(mock_analyze, client):
         'summary': 'Email Test Summary',
         'impact': 'Email Test Impact',
         'tinfoil': 'Email Test Tinfoil',
-        'extracted_url': 'https://example.com/new-terms'
+        'extracted_urls': ['https://example.com/new-terms']
     }
     
     response = client.post('/', data={'email_text': 'We updated our terms: https://example.com/new-terms'})
