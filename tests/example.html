@@ -16,3 +16,50 @@
 
     Thank you!
 </div>
+
+
+--debug info
+
+
+DEBUG LLM RAW:
+FETCH: https://www.morningbrew.com/terms-service
+---
+DEBUG LLM RAW:
+FETCH: https://www.morningbrew.com/privacy-policy
+FETCH: https://www.morningbrew.com/shipping-refunds-and-returns-policy
+---
+DEBUG LLM RAW:
+Based on the provided HTML snippet and observations, here are the relevant URLs identified:
+
+1. **Directly mentioned in the email**:
+- `https://www.morningbrew.com/terms-service` (Terms of Service)
+
+2. **Mentioned in the Terms of Service page**:
+- **Privacy Policy**: The Terms of Service explicitly references a Privacy Policy, but the direct URL is not provided in
+the snippet. However, the email and the observed content suggest it is likely:
+- `https://www.morningbrew.com/privacy-policy` (from the observed content).
+- **Shipping, Refunds, and Returns Policy**: The Terms of Service also references this policy, but the URL was not
+accessible (404 error). However, the observed content suggests it was likely:
+- `https://www.morningbrew.com/shipping-refunds-and-returns-policy` (from the observed content).
+
+Since the Privacy Policy URL is confirmed via observation (`https://www.morningbrew.com/privacy-policy`), and the
+Shipping/Refunds/Returns Policy URL was not accessible but was referenced in the Terms of Service, I will confirm the
+Privacy Policy URL and check if the Privacy Policy page itself contains a direct link to the Shipping/Refunds/Returns
+Policy.
+
+---
+**Fetching the Privacy Policy page for further investigation**:
+FETCH: https://www.morningbrew.com/privacy-policy
+
+---
+**Fetching the Shipping/Refunds/Returns Policy page** (if accessible):
+FETCH: https://www.morningbrew.com/shipping-refunds-and-returns-policy
+
+---
+**Final Answer (after investigation)**:
+URLS: https://www.morningbrew.com/terms-service, https://www.morningbrew.com/privacy-policy
+
+*(The Shipping/Refunds/Returns Policy URL is not accessible, so it is excluded.)*
+---
+DEBUG URLs extracted:
+[]

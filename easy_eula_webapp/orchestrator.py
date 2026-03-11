@@ -1,9 +1,14 @@
 import os
+import re
 import requests
 from bs4 import BeautifulSoup
 from easy_eula_webapp.config import Config
 from google import genai
 import ollama
+import urllib3
+
+# Suppress insecure request warnings for verify=False
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def fetch_eula_text(url: str) -> str:
     """Fetches text from a given URL, attempting both standard HTML and JS-bypassing mechanisms."""
@@ -16,7 +21,7 @@ def fetch_eula_text(url: str) -> str:
     
     # 1. Approach: Standard BeautifulSoup request (best for plain HTML sites)
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10, verify=False)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         # Extract text, removing script and style elements
@@ -33,7 +38,7 @@ def fetch_eula_text(url: str) -> str:
     # 2. Fallback: Use Jina Reader API for JS-rendered apps
     try:
         jina_url = f"https://r.jina.ai/{url}"
-        jina_resp = requests.get(jina_url, headers=headers, timeout=20)
+        jina_resp = requests.get(jina_url, headers=headers, timeout=20, verify=False)
         
         if jina_resp.status_code == 200 and len(jina_resp.text) > 0:
             return jina_resp.text[:100000]
@@ -43,6 +48,7 @@ def fetch_eula_text(url: str) -> str:
     # If we made it here, Jina failed or returned 0 text. 
     # If the standard request fetched *something*, just return that as a last resort.
     if standard_text:
+        print(f"DEBUG text fetched:\n{standard_text}\n---")
         return standard_text[:100000]
         
     raise ValueError(f"Failed to fetch URL: both standard fetch and SPA fallback failed. Initial error: {last_error}")
@@ -84,49 +90,54 @@ def generate_text(prompt: str) -> str:
         raise ValueError(f"Unsupported MODEL_PROVIDER: {provider}")
 
 def extract_urls_from_email(email_text: str) -> list[str]:
-    """Uses LLM to explore and extract the most relevant policy URLs from an email text."""
-    prompt_tmpt = load_prompt('extract_policy_url.md')
-    prompt = prompt_tmpt.replace('{email_text}', email_text)
+    """Hybrid approach: Extracts all URLs using Python, then uses LLM to triage them."""
+    # 1. Gather all unique URLs using BeautifulSoup and regex
+    harvested_urls = set()
     
-    max_steps = 5
-    current_prompt = prompt
-    
-    for _ in range(max_steps):
-        result = generate_text(current_prompt).strip()
-        print(f"DEBUG LLM RAW:\n{result}\n---")
+    # Extract from hrefs
+    try:
+        soup = BeautifulSoup(email_text, 'html.parser')
+        for a in soup.find_all('a', href=True):
+            url = a['href'].strip()
+            if url.startswith('http'):
+                harvested_urls.add(url)
+    except:
+        pass # Not valid HTML, fallback to regex only
         
-        if result.upper() == 'NONE':
-            return []
-            
-        if result.startswith('FETCH:'):
-            url_to_fetch = result.replace('FETCH:', '').strip()
-            try:
-                # Fetch a snippet of the page to let the agent explore
-                page_text = fetch_eula_text(url_to_fetch)
-                snippet = page_text[:3000]
-                current_prompt += f"\n\nObservation from {url_to_fetch}:\n{snippet}\nBased on this, what are the relevant URLs? (Use FETCH: <url> to explore further, or return URLS: <url1>, <url2>...)"
-            except Exception as e:
-                current_prompt += f"\n\nObservation from {url_to_fetch}:\nFailed to fetch: {e}\nTry another link or return the relevant URLs."
-        elif result.startswith('URLS:'):
-            # Parse the comma-separated list of URLs
-            urls_str = result.replace('URLS:', '').strip()
-            # Split by comma and clean up each URL
-            urls = [u.strip('\'"<> \n') for u in urls_str.split(',')]
-            # Filter out empty strings just in case
-            urls = [u for u in urls if u]
-            return urls
-        else:
-             # Fallback if agent just returns a URL or something unexpected without the prefix
-             clean_result = result.strip('\'"<> \n')
-             if clean_result and clean_result.startswith('http'):
-                 return [clean_result]
-             return []
-            
+    # Extract raw URLs from text
+    raw_urls = re.findall(r'https?://[^\s<>"]+', email_text)
+    for url in raw_urls:
+        harvested_urls.add(url.strip('.,!?)'))
+        
+    if not harvested_urls:
+        return []
+
+    # 2. Ask LLM to triage the list
+    prompt_tmpt = load_prompt('extract_policy_url.md')
+    urls_list_str = "\n".join(f"- {u}" for u in sorted(list(harvested_urls)))
+    prompt = prompt_tmpt.replace('{email_text}', email_text).replace('{urls_list}', urls_list_str)
+    
+    result = generate_text(prompt).strip()
+    print(f"DEBUG LLM RAW:\n{result}\n---")
+    
+    if result.upper() == 'NONE':
+        return []
+        
+    # Look for URLS: <urls> pattern
+    urls_match = re.search(r'URLS:\s*(.+)', result, re.IGNORECASE | re.DOTALL)
+    if urls_match:
+        urls_str = urls_match.group(1).strip()
+        # Clean up commas and whitespace
+        potential_urls = [u.strip('\'"<> \n.,*') for u in re.split(r'[\s,]+', urls_str)]
+        urls = [u for u in potential_urls if u.startswith('http')]
+        return urls
+
     return []
 
 def analyze_email(email_text: str) -> dict:
     """Orchestrates the extraction of URLs from an email and their subsequent analysis."""
     urls = extract_urls_from_email(email_text)
+    print(f"DEBUG URLs extracted:\n{urls}\n---")
     if not urls:
         return {
             "success": False,
