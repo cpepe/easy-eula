@@ -1,5 +1,7 @@
 import os
 import re
+import datetime
+from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 from easy_eula_webapp.config import Config
@@ -149,6 +151,53 @@ def analyze_email(email_text: str) -> dict:
         analysis['extracted_urls'] = urls
     return analysis
 
+def save_analysis_report(urls: list[str], results: dict) -> str:
+    """Saves the analysis results to a Markdown file in the reports directory."""
+    try:
+        # Create reports directory if it doesn't exist
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        reports_dir = os.path.join(base_dir, 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        
+        # Generate filename based on first URL and timestamp
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        domain = "unknown"
+        if urls:
+            parsed = urlparse(urls[0])
+            domain = parsed.netloc.replace('.', '_')
+        
+        filename = f"{domain}_{timestamp}.md"
+        filepath = os.path.join(reports_dir, filename)
+        
+        # Format the content
+        content = f"# EULA Analysis Report\n\n"
+        content += f"**Date:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        content += "## Analyzed URLs\n"
+        for url in urls:
+            content += f"- {url}\n"
+        content += "\n---\n\n"
+        
+        content += "## Policy Summary\n"
+        content += results.get('summary', 'No summary available.')
+        content += "\n\n---\n\n"
+        
+        content += "## Impact Analysis\n"
+        content += results.get('impact', 'No impact analysis available.')
+        content += "\n\n---\n\n"
+        
+        content += "## Tinfoil Hat Analysis\n"
+        content += results.get('tinfoil', 'No tinfoil hat analysis available.')
+        content += "\n"
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print(f"DEBUG: Report saved to {filepath}")
+        return filepath
+    except Exception as e:
+        print(f"DEBUG Error saving report: {e}")
+        return None
+
 def analyze_eulas(urls: list[str]) -> dict:
     """Orchestrates the fetching and multi-agent analysis of multiple EULAs."""
     try:
@@ -175,12 +224,17 @@ def analyze_eulas(urls: list[str]) -> dict:
         tinfoil_prompt = tinfoil_prompt_tmpt.replace('{policy_summary}', summary_result).replace('{impact_analysis}', impact_result)
         tinfoil_result = generate_text(tinfoil_prompt)
         
-        return {
+        results = {
             "success": True,
             "summary": summary_result,
             "impact": impact_result,
             "tinfoil": tinfoil_result
         }
+        
+        # Save the report to the filesystem
+        save_analysis_report(urls, results)
+        
+        return results
         
     except Exception as e:
         return {
