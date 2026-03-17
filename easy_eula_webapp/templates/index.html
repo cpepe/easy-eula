@@ -7,13 +7,16 @@
     <title>Easy EULA Analyzer</title>
     <style>
         :root {
-            --bg-color: #0f172a;
+            --bg-color: #0b0f1a;
+            --sidebar-bg: #151b2b;
             --text-color: #f8fafc;
             --card-bg: #1e293b;
             --primary: #3b82f6;
             --primary-hover: #2563eb;
             --border-color: #334155;
             --error-color: #ef4444;
+            --agent-color: #60a5fa;
+            --success-color: #10b981;
         }
 
         body {
@@ -23,285 +26,443 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             line-height: 1.6;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        .container {
-            max-width: 800px;
-            margin: 2rem auto;
-            padding: 0 1.5rem;
+        .layout-wrapper {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            height: 100vh;
         }
 
-        header {
-            text-align: center;
-            margin-bottom: 3rem;
+        /* Sidebar Styles */
+        aside {
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            overflow-y: auto;
         }
 
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
+        header h1 {
+            font-size: 1.75rem;
+            margin: 0 0 0.5rem 0;
             background: linear-gradient(to right, #60a5fa, #3b82f6);
             background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .subtitle {
+        header p {
+            font-size: 0.9rem;
             color: #94a3b8;
-            font-size: 1.1rem;
+            margin: 0;
         }
 
-        .search-box {
-            background-color: var(--card-bg);
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border: 1px solid var(--border-color);
-            margin-bottom: 2rem;
-        }
-
-        form {
+        .input-group {
             display: flex;
-            gap: 1rem;
             flex-direction: column;
+            gap: 1.5rem;
         }
 
-        @media (min-width: 640px) {
-            form {
-                flex-direction: row;
-            }
+        .form-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
         }
 
         input[type="url"] {
-            flex-grow: 1;
+            width: 100%;
+            box-sizing: border-box;
             padding: 0.75rem 1rem;
-            border-radius: 6px;
+            border-radius: 8px;
             border: 1px solid var(--border-color);
             background-color: var(--bg-color);
             color: var(--text-color);
-            font-size: 1rem;
-            transition: border-color 0.2s;
+            font-size: 0.95rem;
+            transition: all 0.2s;
         }
 
         input[type="url"]:focus {
             outline: none;
             border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        #email_editor {
+            min-height: 150px;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-size: 0.95rem;
+            overflow-y: auto;
+            outline: none;
+            cursor: text;
+            transition: all 0.2s;
+        }
+
+        #email_editor:focus {
+            border-color: var(--primary);
+        }
+
+        [contenteditable][aria-placeholder]:empty:before {
+            content: attr(aria-placeholder);
+            color: #475569;
         }
 
         button {
-            padding: 0.75rem 1.5rem;
+            padding: 0.75rem 1.25rem;
             background-color: var(--primary);
             color: white;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-weight: 600;
-            font-size: 1rem;
+            font-size: 0.95rem;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
         }
 
         button:hover {
             background-color: var(--primary-hover);
         }
 
-        .flash-messages {
-            margin-bottom: 1.5rem;
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
-        .flash {
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 0.5rem;
+        /* Main Content Styles */
+        main {
+            padding: 2rem 3rem;
+            overflow-y: auto;
+            scroll-behavior: smooth;
         }
 
-        .flash.error {
-            background-color: rgba(239, 68, 68, 0.1);
-            color: var(--error-color);
-            border: 1px solid var(--error-color);
-        }
-
-        /* Results Styles */
-        .results-container {
+        .main-container {
+            max-width: 900px;
+            margin: 0 auto;
             display: flex;
             flex-direction: column;
             gap: 2rem;
         }
 
-        .result-card {
-            background-color: var(--card-bg);
+        /* Status Feed */
+        .status-feed {
+            background-color: #0f172a;
             border-radius: 12px;
-            padding: 2rem;
+            padding: 1.5rem;
             border: 1px solid var(--border-color);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            animation: fadeIn 0.5s ease-out;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
         }
 
-        .result-card h2 {
+        .status-feed.active {
+            display: block;
+        }
+
+        .status-line {
+            margin-bottom: 0.5rem;
+            color: #94a3b8;
+            animation: slideIn 0.3s ease-out;
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .status-line .time {
+            color: #475569;
+            flex-shrink: 0;
+        }
+
+        .status-line .msg {
+            color: var(--agent-color);
+        }
+
+        .status-line.error .msg {
+            color: var(--error-color);
+        }
+
+        .status-line.success .msg {
+            color: var(--success-color);
+        }
+
+        /* Result Cards */
+        .results-section {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            display: none;
+        }
+
+        .results-section.active {
+            display: flex;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
             margin-top: 0;
             padding-bottom: 1rem;
             border-bottom: 1px solid var(--border-color);
-            font-size: 1.5rem;
-            color: #e2e8f0;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
         }
 
-        /* Markdown Styles */
-        .result-card p {
+        .card.tinfoil h2 {
+            color: #fbbf24;
+        }
+
+        .markdown-content {
+            color: #cbd5e1;
+            font-size: 1.05rem;
+        }
+
+        .markdown-content p:first-child {
             margin-top: 0;
-            color: #cbd5e1;
         }
 
-        .result-card ul,
-        .result-card ol {
-            color: #cbd5e1;
+        .markdown-content ul, .markdown-content ol {
             padding-left: 1.5rem;
         }
 
-        .result-card strong,
-        .result-card b {
-            color: #f8fafc;
+        /* Utilities */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
         }
 
-        /* Loading state */
-        .loading {
-            display: none;
+        .divider {
             text-align: center;
-            margin: 2rem 0;
-            color: #94a3b8;
+            position: relative;
+            margin: 1rem 0;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .divider::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background-color: var(--border-color);
         }
 
-        .tinfoil-hat h2 {
-            color: #fbbf24;
-            border-bottom-color: rgba(251, 191, 36, 0.3);
+        .divider span {
+            position: relative;
+            background-color: var(--sidebar-bg);
+            padding: 0 1rem;
+            color: #475569;
+            font-size: 0.75rem;
+            font-weight: bold;
         }
 
-        [contenteditable][aria-placeholder]:empty:before {
-            content: attr(aria-placeholder);
-            color: #94a3b8;
-            pointer-events: none;
-            display: block;
+        .analyzed-urls {
+            font-size: 0.85rem;
+            color: #64748b;
+            background: rgba(59, 130, 246, 0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .analyzed-urls ul {
+            margin: 0.5rem 0 0 0;
+            padding-left: 1.25rem;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <header>
-            <h1>Easy EULA</h1>
-            <p class="subtitle">Understand policy changes they've already made you agree to.</p>
-        </header>
+    <div class="layout-wrapper">
+        <aside>
+            <header>
+                <h1>Easy EULA</h1>
+                <p>Decoding the fine print with AI agents.</p>
+            </header>
 
-        <section class="search-box">
-            <div class="flash-messages">
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                {% for category, message in messages %}
-                <div class="flash {{ category }}">{{ message }}</div>
-                {% endfor %}
-                {% endif %}
-                {% endwith %}
-            </div>
-
-            <form action="/" method="POST" onsubmit="showLoading()">
-                <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 0.5rem;">
-                    <label style="font-weight: 600;">Analyze by Policy URL</label>
-                    <input type="url" name="url" placeholder="https://example.com/terms"
-                        value="{{ url if url else '' }}">
+            <div class="input-group">
+                <div class="form-section">
+                    <label>By URL</label>
+                    <input type="url" id="url_input" placeholder="https://example.com/terms">
+                    <button onclick="startAnalysis('url')" id="url_btn">Analyze URL</button>
                 </div>
-                <div style="display: flex; align-items: flex-end;">
-                    <button type="submit" class="submit-btn">Analyze URL</button>
-                </div>
-            </form>
 
-            <div style="text-align: center; color: var(--border-color); font-weight: 600; margin: 1.5rem 0;">— OR —
-            </div>
+                <div class="divider"><span>OR</span></div>
 
-            <form action="/" method="POST" onsubmit="prepareEmailSubmission(event)" style="flex-direction: column;">
-                <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 0.5rem;">
-                    <label style="font-weight: 600;">Analyze via Update Email</label>
-                    <div id="email_editor" contenteditable="true" aria-placeholder="Paste the policy update email (with formatting) here..."
-                        style="min-height: 120px; width: 100%; box-sizing: border-box; padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color); background-color: var(--bg-color); color: var(--text-color); font-size: 1rem; font-family: inherit; overflow-y: auto; transition: border-color 0.2s; outline: none; cursor: text;"
-                        onfocus="this.style.borderColor='var(--primary)'"
-                        onblur="this.style.borderColor='var(--border-color)'"></div>
-                    <input type="hidden" name="email_text" id="hidden_email_text">
-                </div>
-                <div style="display: flex; justify-content: flex-end;">
-                    <button type="submit" class="submit-btn" id="email-submit-btn">Analyze Email</button>
-                </div>
-            </form>
-            <div id="loading" class="loading">
-                Analyzing with AI. This may take a minute...
-            </div>
-        </section>
-
-        {% if results %}
-        <section class="results-container">
-            {% if urls and urls|length > 0 %}
-            <div class="result-card" style="padding: 1.5rem; background-color: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2);">
-                <h3 style="margin-top: 0; color: #60a5fa; font-size: 1.1rem; margin-bottom: 0.75rem;">Analyzed Documents ({{ urls|length }})</h3>
-                <ul style="margin-bottom: 0; margin-top: 0;">
-                    {% for u in urls %}
-                    <li style="margin-bottom: 0.25rem;"><a href="{{ u }}" target="_blank" style="color: #94a3b8; text-decoration: none; word-break: break-all;">{{ u }}</a></li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-
-            <div class="result-card">
-                <h2>Policy Summary</h2>
-                <div class="markdown-content">
-                    {{ results.summary | safe }}
+                <div class="form-section">
+                    <label>By Email</label>
+                    <div id="email_editor" contenteditable="true" aria-placeholder="Paste the policy update email here..."></div>
+                    <button onclick="startAnalysis('email')" id="email_btn">Analyze Email</button>
                 </div>
             </div>
+        </aside>
 
-            <div class="result-card">
-                <h2>Impact Analysis</h2>
-                <div class="markdown-content">
-                    {{ results.impact | safe }}
+        <main>
+            <div class="main-container">
+                <!-- Welcome Message (Visible by default) -->
+                <div id="welcome_screen" style="text-align: center; padding: 4rem 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">🔍</div>
+                    <h2 style="color: #64748b;">Ready to analyze?</h2>
+                    <p style="color: #475569;">Provide a legal document URL or paste an update email to begin.</p>
+                </div>
+
+                <!-- Status Feed -->
+                <div id="status_feed" class="status-feed"></div>
+
+                <!-- Results -->
+                <div id="results_section" class="results-section">
+                    <div id="urls_card" class="analyzed-urls" style="display: none;">
+                        <strong>Analyzed Documents:</strong>
+                        <ul id="urls_list"></ul>
+                    </div>
+
+                    <div class="card">
+                        <h2><span>📝</span> Policy Summary</h2>
+                        <div id="summary_content" class="markdown-content"></div>
+                    </div>
+
+                    <div class="card">
+                        <h2><span>⚖️</span> Impact Analysis</h2>
+                        <div id="impact_content" class="markdown-content"></div>
+                    </div>
+
+                    <div class="card tinfoil">
+                        <h2><span>🕵️</span> Tinfoil Hat Analysis</h2>
+                        <div id="tinfoil_content" class="markdown-content"></div>
+                    </div>
                 </div>
             </div>
-
-            <div class="result-card tinfoil-hat">
-                <h2>Tinfoil Hat Analysis</h2>
-                <div class="markdown-content">
-                    {{ results.tinfoil | safe }}
-                </div>
-            </div>
-        </section>
-        {% endif %}
+        </main>
     </div>
 
     <script>
-        function showLoading() {
-            document.getElementById('loading').style.display = 'block';
-            const buttons = document.querySelectorAll('.submit-btn');
-            buttons.forEach(btn => {
-                btn.disabled = true;
-                btn.textContent = 'Processing...';
-            });
+        function addStatus(msg, type = 'info') {
+            const feed = document.getElementById('status_feed');
+            feed.classList.add('active');
+            
+            const line = document.createElement('div');
+            line.className = `status-line ${type}`;
+            
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                            now.getMinutes().toString().padStart(2, '0') + ':' + 
+                            now.getSeconds().toString().padStart(2, '0');
+            
+            line.innerHTML = `<span class="time">[${timeStr}]</span><span class="msg">${msg}</span>`;
+            feed.appendChild(line);
+            feed.scrollTop = feed.scrollHeight;
         }
 
-        function prepareEmailSubmission(event) {
-            const editor = document.getElementById('email_editor');
-            const hiddenInput = document.getElementById('hidden_email_text');
-            hiddenInput.value = editor.innerHTML;
+        async function startAnalysis(mode) {
+            const urlInput = document.getElementById('url_input');
+            const emailEditor = document.getElementById('email_editor');
+            const urlBtn = document.getElementById('url_btn');
+            const emailBtn = document.getElementById('email_btn');
             
-            if (!editor.textContent.trim() && !editor.querySelector('a, img')) {
-                event.preventDefault();
-                alert("Please paste an email first.");
-                return;
+            const data = new FormData();
+            if (mode === 'url') {
+                if (!urlInput.value) return alert("Please enter a URL");
+                data.append('url', urlInput.value);
+            } else {
+                if (!emailEditor.textContent.trim()) return alert("Please paste an email");
+                data.append('email_text', emailEditor.innerHTML);
             }
-            showLoading();
+
+            // UI Reset
+            document.getElementById('welcome_screen').style.display = 'none';
+            document.getElementById('status_feed').innerHTML = '';
+            document.getElementById('results_section').classList.remove('active');
+            document.getElementById('urls_card').style.display = 'none';
+            urlBtn.disabled = true;
+            emailBtn.disabled = true;
+
+            addStatus("Initializing AI Agents...");
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: data
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const payload = JSON.parse(line.substring(6));
+                            handlePayload(payload);
+                        }
+                    }
+                }
+            } catch (err) {
+                addStatus(`Fatal error: ${err.message}`, 'error');
+            } finally {
+                urlBtn.disabled = false;
+                emailBtn.disabled = false;
+            }
+        }
+
+        function handlePayload(data) {
+            if (data.status) {
+                addStatus(data.status);
+            }
+            
+            if (data.urls) {
+                const list = document.getElementById('urls_list');
+                list.innerHTML = data.urls.map(u => `<li><a href="${u}" target="_blank" style="color: #60a5fa; text-decoration: none;">${u}</a></li>`).join('');
+                document.getElementById('urls_card').style.display = 'block';
+            }
+
+            if (data.success === false) {
+                addStatus(`Error: ${data.error}`, 'error');
+            }
+
+            if (data.summary) {
+                document.getElementById('summary_content').innerHTML = data.summary;
+                document.getElementById('impact_content').innerHTML = data.impact;
+                document.getElementById('tinfoil_content').innerHTML = data.tinfoil;
+                document.getElementById('results_section').classList.add('active');
+                addStatus("Results rendered successfully.", "success");
+            }
         }
     </script>
 </body>

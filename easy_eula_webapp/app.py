@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, flash
+from flask import Flask, render_template, request, flash, Response
+import json
 import markdown
 from easy_eula_webapp.config import Config
 from easy_eula_webapp.orchestrator import analyze_eulas, analyze_email
@@ -9,41 +10,34 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24) 
 app.config.from_object(Config)
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def index():
-    if request.method == 'POST':
-        url = request.form.get('url')
-        email_text = request.form.get('email_text')
-        
-        if url:
-            urls = [url]
-            analysis = analyze_eulas(urls)
-        elif email_text:
-            analysis = analyze_email(email_text)
-            urls = analysis.get('extracted_urls', [])
-            # If multiple URLs were extracted via email, clear the single URL box to prevent validation issues
-            if len(urls) > 1:
-                 url = ""
-            elif len(urls) == 1:
-                 url = urls[0]
-        else:
-            flash('Please enter a URL or paste an email.', 'error')
-            return render_template('index.html')
-            
-        if not analysis.get('success'):
-            flash(f"Error analyzing: {analysis.get('error')}", 'error')
-            return render_template('index.html', url=url, urls=urls)
-            
-        # Convert markdown results to HTML
-        results = {
-            'summary': markdown.markdown(analysis['summary']),
-            'impact': markdown.markdown(analysis['impact']),
-            'tinfoil': markdown.markdown(analysis['tinfoil'])
-        }
-        
-        return render_template('index.html', url=url, urls=urls, results=results)
-        
     return render_template('index.html')
+
+@app.route('/analyze', methods=['POST'])
+def analyze():
+    url = request.form.get('url')
+    email_text = request.form.get('email_text')
+    
+    if not url and not email_text:
+        return json.dumps({"success": False, "error": "No input provided"}), 400
+
+    def generate():
+        if url:
+            gen = analyze_eulas([url])
+        else:
+            gen = analyze_email(email_text)
+            
+        for step in gen:
+            # If the step has results (summary, impact, tinfoil), markdownify them
+            if "summary" in step:
+                step["summary"] = markdown.markdown(step["summary"])
+                step["impact"] = markdown.markdown(step["impact"])
+                step["tinfoil"] = markdown.markdown(step["tinfoil"])
+            
+            yield f"data: {json.dumps(step)}\n\n"
+            
+    return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
     app.run(debug=True)

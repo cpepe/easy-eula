@@ -136,20 +136,18 @@ def extract_urls_from_email(email_text: str) -> list[str]:
 
     return []
 
-def analyze_email(email_text: str) -> dict:
-    """Orchestrates the extraction of URLs from an email and their subsequent analysis."""
+def analyze_email(email_text: str):
+    """Orchestrates the extraction of URLs from an email and their subsequent analysis, yielding status."""
+    yield {"status": "Agent: Harvesting URLs from email text..."}
     urls = extract_urls_from_email(email_text)
-    print(f"DEBUG URLs extracted:\n{urls}\n---")
-    if not urls:
-        return {
-            "success": False,
-            "error": "Could not identify any policy URLs in the provided email text."
-        }
     
-    analysis = analyze_eulas(urls)
-    if analysis.get('success'):
-        analysis['extracted_urls'] = urls
-    return analysis
+    if not urls:
+        yield {"success": False, "error": "Could not identify any policy URLs in the provided email text."}
+        return
+    
+    yield {"status": f"Agent: Identified {len(urls)} relevant URL(s).", "urls": urls}
+    
+    yield from analyze_eulas(urls)
 
 def save_analysis_report(urls: list[str], results: dict) -> str:
     """Saves the analysis results to a Markdown file in the reports directory."""
@@ -198,28 +196,35 @@ def save_analysis_report(urls: list[str], results: dict) -> str:
         print(f"DEBUG Error saving report: {e}")
         return None
 
-def analyze_eulas(urls: list[str]) -> dict:
-    """Orchestrates the fetching and multi-agent analysis of multiple EULAs."""
+def analyze_eulas(urls: list[str]):
+    """Orchestrates the fetching and multi-agent analysis of multiple EULAs, yielding status."""
     try:
         combined_text = ""
         for url in urls:
+            yield {"status": f"Agent: Fetching content from {url}..."}
             try:
                 text = fetch_eula_text(url)
+                if text.startswith("Failed to fetch"):
+                     yield {"status": f"Warning: {text}"}
                 combined_text += f"\n\n--- Content from {url} ---\n\n{text}"
             except Exception as e:
+                yield {"status": f"Error: Failed to fetch {url}: {e}"}
                 combined_text += f"\n\n--- Content from {url} ---\n\nFailed to fetch: {e}"
 
         # 1. Summarization Agent
+        yield {"status": "Agent: Synthesizing policy summary..."}
         summary_prompt_tmpt = load_prompt('eula_to_summary.md')
         summary_prompt = summary_prompt_tmpt.replace('{policy_text}', combined_text)
         summary_result = generate_text(summary_prompt)
         
         # 2. Impact Analysis Agent
+        yield {"status": "Agent: Conducting impact analysis..."}
         impact_prompt_tmpt = load_prompt('impact_analysis.md')
         impact_prompt = impact_prompt_tmpt.replace('{policy_summary}', summary_result)
         impact_result = generate_text(impact_prompt)
         
         # 3. Tinfoil Hat Agent
+        yield {"status": "Agent: Final investigative sweep (Tinfoil Hat)..."}
         tinfoil_prompt_tmpt = load_prompt('tinfoil_hat.md')
         tinfoil_prompt = tinfoil_prompt_tmpt.replace('{policy_summary}', summary_result).replace('{impact_analysis}', impact_result)
         tinfoil_result = generate_text(tinfoil_prompt)
@@ -228,15 +233,19 @@ def analyze_eulas(urls: list[str]) -> dict:
             "success": True,
             "summary": summary_result,
             "impact": impact_result,
-            "tinfoil": tinfoil_result
+            "tinfoil": tinfoil_result,
+            "urls": urls
         }
         
         # Save the report to the filesystem
+        yield {"status": "Agent: Archiving report to filesystem..."}
         save_analysis_report(urls, results)
         
-        return results
+        yield {"status": "Agent: Analysis complete."}
+        yield results
         
     except Exception as e:
+        yield {"success": False, "error": str(e)}
         return {
             "success": False,
             "error": str(e)
