@@ -5,9 +5,11 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 from easy_eula_webapp.config import Config
-from google import genai
-import ollama
 import urllib3
+
+from easy_eula_webapp.harness.state import AnalysisState
+from easy_eula_webapp.harness.llm import GeminiProvider, OllamaProvider
+from easy_eula_webapp.harness.agent import Agent, Task
 
 # Suppress insecure request warnings for verify=False
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -55,39 +57,12 @@ def fetch_eula_text(url: str) -> str:
         
     raise ValueError(f"Failed to fetch URL: both standard fetch and SPA fallback failed. Initial error: {last_error}")
 
-def load_prompt(filename: str) -> str:
-    """Loads a prompt template from the agent_policies directory."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(base_dir, 'agent_policies', filename)
-    with open(path, 'r', encoding='utf-8') as f:
-        return f.read()
-
-def generate_text(prompt: str) -> str:
-    """Generates text from the configured LLM provider."""
+def get_llm_provider():
     provider = Config.MODEL_PROVIDER.lower()
-    
     if provider == 'gemini':
-        api_key = Config.GEMINI_API_KEY
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is not set in environment.")
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        return response.text
-        
+        return GeminiProvider(api_key=Config.GEMINI_API_KEY)
     elif provider == 'ollama':
-        host = Config.OLLAMA_HOST
-        model = Config.OLLAMA_MODEL
-        client = ollama.Client(host=host)
-        
-        try:
-            response = client.generate(model=model, prompt=prompt)
-            return response['response']
-        except Exception as e:
-             raise ValueError(f"Ollama generation failed. Ensure Ollama is running at {host} and model {model} is pulled. Error: {e}")
-             
+        return OllamaProvider(host=Config.OLLAMA_HOST, model=Config.OLLAMA_MODEL)
     else:
         raise ValueError(f"Unsupported MODEL_PROVIDER: {provider}")
 
@@ -114,25 +89,36 @@ def extract_urls_from_email(email_text: str) -> list[str]:
     if not harvested_urls:
         return []
 
-    # 2. Ask LLM to triage the list
-    prompt_tmpt = load_prompt('extract_policy_url.md')
-    urls_list_str = "\n".join(f"- {u}" for u in sorted(list(harvested_urls)))
-    prompt = prompt_tmpt.replace('{email_text}', email_text).replace('{urls_list}', urls_list_str)
+    # 2. Ask LLM to triage the list using Structured Output
+    provider = get_llm_provider()
+    extraction_agent = Agent("Extraction Specialist", "extract_policy_url.md", provider)
     
-    result = generate_text(prompt).strip()
+    url_schema = {
+        "type": "object",
+        "properties": {
+            "urls": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "The filtered list of URLs pointing directly to relevant legal documents"
+            }
+        },
+        "required": ["urls"]
+    }
+    
+    task = Task(extraction_agent, expected_schema=url_schema)
+    urls_list_str = "\n".join(f"- {u}" for u in sorted(list(harvested_urls)))
+    
+    context = {
+        "email_text": email_text,
+        "urls_list": urls_list_str
+    }
+    
+    result = task.execute(context)
     print(f"DEBUG LLM RAW:\n{result}\n---")
     
-    if result.upper() == 'NONE':
-        return []
-        
-    # Look for URLS: <urls> pattern
-    urls_match = re.search(r'URLS:\s*(.+)', result, re.IGNORECASE | re.DOTALL)
-    if urls_match:
-        urls_str = urls_match.group(1).strip()
-        # Clean up commas and whitespace
-        potential_urls = [u.strip('\'"<> \n.,*') for u in re.split(r'[\s,]+', urls_str)]
-        urls = [u for u in potential_urls if u.startswith('http')]
-        return urls
+    if isinstance(result, dict) and "urls" in result:
+        urls = [str(u).strip('\'"<> \n.,*') for u in result["urls"]]
+        return [u for u in urls if str(u).startswith('http')]
 
     return []
 
@@ -198,48 +184,57 @@ def save_analysis_report(urls: list[str], results: dict) -> str:
 
 def analyze_eulas(urls: list[str]):
     """Orchestrates the fetching and multi-agent analysis of multiple EULAs, yielding status."""
+    state = AnalysisState(urls=urls)
+    
     try:
         combined_text = ""
-        for url in urls:
+        for url in state.urls:
             yield {"status": f"Agent: Fetching content from {url}..."}
             try:
                 text = fetch_eula_text(url)
                 if text.startswith("Failed to fetch"):
                      yield {"status": f"Warning: {text}"}
+                state.raw_texts[url] = text
                 combined_text += f"\n\n--- Content from {url} ---\n\n{text}"
             except Exception as e:
                 yield {"status": f"Error: Failed to fetch {url}: {e}"}
+                state.raw_texts[url] = f"Failed to fetch: {e}"
                 combined_text += f"\n\n--- Content from {url} ---\n\nFailed to fetch: {e}"
+
+        provider = get_llm_provider()
 
         # 1. Summarization Agent
         yield {"status": "Agent: Synthesizing policy summary..."}
-        summary_prompt_tmpt = load_prompt('eula_to_summary.md')
-        summary_prompt = summary_prompt_tmpt.replace('{policy_text}', combined_text)
-        summary_result = generate_text(summary_prompt)
+        summary_agent = Agent("Summarizer", "eula_to_summary.md", provider)
+        summary_task = Task(summary_agent)
+        state.summary = summary_task.execute({"policy_text": combined_text})
         
         # 2. Impact Analysis Agent
         yield {"status": "Agent: Conducting impact analysis..."}
-        impact_prompt_tmpt = load_prompt('impact_analysis.md')
-        impact_prompt = impact_prompt_tmpt.replace('{policy_summary}', summary_result)
-        impact_result = generate_text(impact_prompt)
+        impact_agent = Agent("Risk Analyst", "impact_analysis.md", provider)
+        impact_task = Task(impact_agent)
+        state.impact = impact_task.execute({"policy_summary": state.summary})
         
         # 3. Tinfoil Hat Agent
         yield {"status": "Agent: Final investigative sweep (Tinfoil Hat)..."}
-        tinfoil_prompt_tmpt = load_prompt('tinfoil_hat.md')
-        tinfoil_prompt = tinfoil_prompt_tmpt.replace('{policy_summary}', summary_result).replace('{impact_analysis}', impact_result)
-        tinfoil_result = generate_text(tinfoil_prompt)
+        tinfoil_agent = Agent("Tinfoil Hat", "tinfoil_hat.md", provider)
+        tinfoil_task = Task(tinfoil_agent)
+        state.tinfoil = tinfoil_task.execute({
+            "policy_summary": state.summary,
+            "impact_analysis": state.impact
+        })
         
         results = {
             "success": True,
-            "summary": summary_result,
-            "impact": impact_result,
-            "tinfoil": tinfoil_result,
-            "urls": urls
+            "summary": state.summary,
+            "impact": state.impact,
+            "tinfoil": state.tinfoil,
+            "urls": state.urls
         }
         
         # Save the report to the filesystem
         yield {"status": "Agent: Archiving report to filesystem..."}
-        save_analysis_report(urls, results)
+        save_analysis_report(state.urls, results)
         
         yield {"status": "Agent: Analysis complete."}
         yield results
